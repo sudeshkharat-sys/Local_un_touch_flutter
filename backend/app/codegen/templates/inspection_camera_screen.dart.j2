@@ -79,6 +79,15 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
     return cn.contains('ok') && !cn.contains('not');
   }
 
+  /// Returns true only when the detected class exactly matches one of the target
+  /// classes AND that class is an "ok" class (not "not ok", "not_ok", etc.).
+  bool _isPass(String? className, List<String> targetClasses) {
+    if (className == null) return false;
+    final cn = className.toLowerCase().trim();
+    final exactMatch = targetClasses.any((tc) => tc.toLowerCase().trim() == cn);
+    return exactMatch && _isOkClass(className);
+  }
+
   Future<void> _loadCurrentModel() async {
     setState(() {
       _isLoadingModel = true;
@@ -260,7 +269,9 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
         final imgDir = Directory('${dir.path}/inspection_images');
         await imgDir.create(recursive: true);
         savedImagePath = '${imgDir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await File(savedImagePath).writeAsBytes(bytes);
+        await File(savedImagePath).writeAsBytes(bytes, flush: true);
+        final savedLen = await File(savedImagePath).length();
+        _addLog("Image saved: ${savedLen}B -> $savedImagePath");
       } catch (e) {
         _addLog("Image save error: $e");
       }
@@ -270,7 +281,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
         _addLog("Found: ${d.className} (${(d.confidence*100).toStringAsFixed(1)}%)");
       }
 
-      final filtered = allDetections.where((d) => targetClasses.any((tc) => d.className.toLowerCase() == tc.toLowerCase())).toList();
+      final filtered = allDetections.where((d) => targetClasses.any((tc) => d.className.toLowerCase().trim() == tc.toLowerCase().trim())).toList();
       _addLog("Matches after filtering: ${filtered.length}");
 
       setState(() {
@@ -282,9 +293,11 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
           // Store only the single winning bbox so history shows one clean box.
           final detectionsJson = jsonEncode([_bestResult!.toJson()]);
 
+          final pass = _isPass(_bestResult!.className, targetClasses);
+          _addLog("Pass: $pass");
           _results[_currentIndex] = {
             'className': _bestResult!.className,
-            'success': _isOkClass(_bestResult!.className),
+            'success': pass,
             'imagePath': savedImagePath,
             'detectionsJson': detectionsJson,
           };
@@ -336,7 +349,9 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
     // Only fall back if somehow the capture result is missing.
     _results[_currentIndex] ??= {
       'className': _bestResult?.className ?? 'None',
-      'success': _isOkClass(_bestResult?.className),
+      'success': false,
+      'imagePath': null,
+      'detectionsJson': jsonEncode([]),
     };
 
     int nextIdx = (_currentIndex + 1) % widget.tasks.length;
@@ -360,6 +375,8 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
   Widget build(BuildContext context) {
     if (_error != null) return Scaffold(body: Center(child: Text('Error: $_error')));
     final currentTask = widget.tasks[_currentIndex];
+    final List<String> taskClasses = List<String>.from(currentTask['classes'] ?? []);
+    final bool badgeGreen = _bestResult != null && _isPass(_bestResult!.className, taskClasses);
 
     return Scaffold(
       body: Container(
@@ -487,7 +504,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: _isOkClass(_bestResult?.className) ? Colors.green : Colors.red,
+                            color: badgeGreen ? Colors.green : Colors.red,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: _bestResult != null
