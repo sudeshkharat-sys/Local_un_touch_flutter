@@ -70,6 +70,15 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
     debugPrint(msg);
   }
 
+  /// Returns true when the detected class name indicates a passing ("ok") result.
+  /// Normalises underscores/dashes so variants like "not_ok", "NOT-OK", "not ok"
+  /// are all correctly treated as failing.
+  bool _isOkClass(String? className) {
+    if (className == null) return false;
+    final cn = className.toLowerCase().replaceAll('_', ' ').replaceAll('-', ' ');
+    return cn.contains('ok') && !cn.contains('not');
+  }
+
   Future<void> _loadCurrentModel() async {
     setState(() {
       _isLoadingModel = true;
@@ -133,7 +142,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
         return;
       }
       final backCamera = cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.back, orElse: () => cameras.first);
-      // ResolutionPreset.medium (~720p) is sufficient for 640×640 model input and
+      // ResolutionPreset.medium (~720p) is sufficient for 640x640 model input and
       // cuts JPEG decode time roughly in half vs. high (~1080p).
       final controller = CameraController(backCamera, ResolutionPreset.medium, enableAudio: false);
       _cameraController = controller;
@@ -168,7 +177,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
           orientedImage = oriented; // captured for inference
           imageSize = Size(oriented.width.toDouble(), oriented.height.toDouble());
 
-          // Blur detection: Laplacian variance on a 150×150 thumbnail.
+          // Blur detection: Laplacian variance on a 150x150 thumbnail.
           // Sharp images have high variance; blurry images have low variance.
           final small = img.copyResize(oriented, width: 150, height: 150);
           final gray = img.grayscale(small);
@@ -220,7 +229,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
                   ],
                 ),
               );
-              return; // Abort — don't run detection on a blurry image
+              return; // Abort -- don't run detection on a blurry image
             }
           }
         }
@@ -275,7 +284,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
 
           _results[_currentIndex] = {
             'className': _bestResult!.className,
-            'success': true,
+            'success': _isOkClass(_bestResult!.className),
             'imagePath': savedImagePath,
             'detectionsJson': detectionsJson,
           };
@@ -327,7 +336,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
     // Only fall back if somehow the capture result is missing.
     _results[_currentIndex] ??= {
       'className': _bestResult?.className ?? 'None',
-      'success': _bestResult != null,
+      'success': _isOkClass(_bestResult?.className),
     };
 
     int nextIdx = (_currentIndex + 1) % widget.tasks.length;
@@ -449,7 +458,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
                     if (_isAnalyzing)
                       Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator(color: Color(0xFFDC143C)))),
 
-                    // Flashlight toggle — visible only during live camera preview
+                    // Flashlight toggle -- visible only during live camera preview
                     if (_capturedImageBytes == null && _isCameraInitialized)
                       Positioned(
                         top: 16, left: 16,
@@ -478,7 +487,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: _bestResult != null ? Colors.green : Colors.red,
+                            color: _isOkClass(_bestResult?.className) ? Colors.green : Colors.red,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: _bestResult != null
@@ -492,7 +501,7 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen> with Wi
                         ),
                       ),
 
-                    // Bottom panel — shown when NOT FOUND (and debug console is hidden)
+                    // Bottom panel -- shown when NOT FOUND (and debug console is hidden)
                     if (!_isAnalyzing && _capturedImageBytes != null && _bestResult == null && !_showDebugConsole)
                       Positioned(
                         bottom: 0, left: 0, right: 0,
