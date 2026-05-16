@@ -46,6 +46,8 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen>
   bool _isFlashOn = false;
 
   List<DetectionResult> _allDetections = [];
+  // Only the single best non-target detection is kept to avoid showing
+  // multiple rows of the same class at different confidences.
   List<DetectionResult> _detectedNonTargetClasses = [];
   int _currentIndex = 0;
   final Map<int, dynamic> _results = {};
@@ -296,9 +298,12 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen>
             'detectionsJson': jsonEncode([_bestResult!.toJson()]),
           };
         } else {
+          // Keep only the single best non-target detection.
+          // Taking more than 1 caused repeated rows of the same class
+          // (e.g. "not ok 85%, not ok 72%, not ok 63%") which confused users.
           final nonTarget = List<DetectionResult>.from(allDetections)
             ..sort((a, b) => b.confidence.compareTo(a.confidence));
-          _detectedNonTargetClasses = nonTarget.take(3).toList();
+          _detectedNonTargetClasses = nonTarget.take(1).toList();
           final bestDetected = _detectedNonTargetClasses.isNotEmpty
               ? _detectedNonTargetClasses.first
               : null;
@@ -383,8 +388,10 @@ class _InspectionCameraScreenState extends State<InspectionCameraScreen>
     final currentTask = widget.tasks[_currentIndex];
     final List<String> taskClasses =
         List<String>.from(currentTask['classes'] ?? []);
+
     final bool badgeGreen =
         _bestResult != null && _isPass(_bestResult!.className, taskClasses);
+
     final DetectionResult? overlayResult = _bestResult ??
         (_detectedNonTargetClasses.isNotEmpty
             ? _detectedNonTargetClasses.first
